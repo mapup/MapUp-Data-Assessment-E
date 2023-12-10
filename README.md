@@ -31,6 +31,31 @@ Each CSV file should contain the following columns:
 - **longitude**: GPS longitude in degrees.
 - **timestamp**: Timestamp string in RFC 3301 format.
 
+import pandas as pd
+import argparse
+from datetime import datetime, timedelta
+
+def identify_trips(df):
+    
+def main():
+    parser = argparse.ArgumentParser(description='Process GS data and extract trip information.')
+    parser.add_argument('--to_process',help='Path to the Parquet file to be processed',required=True)
+    parser.add_argument('--output_dir',help='Output directory to store resulting CSV files',required=True)
+    args = parser.parse_args()
+    
+    parquet_df=pd.read_csv(args.to_process)
+    
+    trips = identify_trips(parquet_df)
+    
+    for trip_number, trip_data in enumerate(trips):
+        csv_filename = f"{trip_data['unit']}_{trip_number}.CSV"
+        csv_path = f"{args.output_dir}/{csv_filename}"
+        
+        trip_data.to_csv(csv_path,index=False)
+        
+if __name__ == "__main__":
+    main()
+
 ### Script Usage:
 
 The Python script (`process1.py`) should be executed with the following command-line arguments:
@@ -74,6 +99,37 @@ with open(file_path, 'rb') as file:
     response = requests.post(url, data=file, headers=headers)
 ```
 Your Python script should concurrently send CSV files obtained from Process1 to the TollGuru API, using the same file names for storage of the JSON responses.
+
+import os
+import requests
+import argparse
+from dotenv import load_dotenv
+
+load_dotenv()
+
+TOLLGURU_API_KEY = os.getenv("TOLLGURU_API_KEY")
+TOLLGURU_API_URL = os.getenv("TOLLGURU_API_URL")
+UPLOAD_ENDPOINT = "/gps-tracks-csv-upload"
+
+def upload_gps_tracks(vehicle_file):
+    
+def main():
+    parser = argparser.ArgumentParser(description="Upload GPS tracks to TollGuru API.")
+    #parser = argparser.ArgumentParser(description='Process GS data and extract trip information.')
+    #parser.add_argument('--to_process',help='Path to the Parquet file to be processed',required=True)
+    #parser.add_argument('--output_dir',help='Output directory to store resulting CSV files',required=True)
+    #args = parser.parse_args()
+    parser.add_argument('--process_output_dir',help="Directory containing processed CSV files",required=True)
+    args = parser.parser_args()
+    
+    for csv_file in os.listdir(args.process_output_dir):
+        if csv_file.endwith(".CSV"):
+            csv_path = os.path.join(args.process_output_dir,csv_file)
+            
+        uplaod_gps_tracks(csv_path)
+        
+if __name__ == "__main__":
+    main()
 
 ### Script Usage:
 
@@ -122,6 +178,53 @@ Handle cases where values might be null in the JSON files by leaving the corresp
 If there are no tolls in a route, you can ignore those files
 
 Ensure that the script can efficiently process a large number of JSON files in the specified input directory.
+
+import os
+import json
+import csv
+import argparse
+
+def extract_transform_data(json_folder,output_file):
+    all_data=[]
+    
+    for json_file in os.listdir(json_folder):
+        if json_file.endwith(".json"):
+            json_path = os.path.join(json_folder,json_file)
+            
+            with open(json_path,'r') as file:
+                try:
+                    json_data = json.load(file)
+                    transformed_data = transform_json_data(json_data,json_file)
+                    all_data.extend(transformed_data)
+                except json.JSONDecodeError as e:
+                    print(f'Error decoding JSON file {json_file}:{e}')
+                    
+    csv_filename = os.path.join(output_dir, 'transformed_data.csv')
+    save_to_csv(all_data,csv_filename)
+    
+def transform_json_data(json_data, json_file):
+    
+def save_to_csv(data,csv_filename):
+    with open(csv_filename,'w',newline='') as csvfile:
+        fieldnames = ['unit','trip_id','toll_loc_id_start','toll_loc_id_end','toll_loc_name_start','toll_loc_name_end','toll_system_type',
+                     'entry_time','exit_time','tag_cost','cash_cost','license_plate_cost']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        
+        writer.writerows()
+        
+def main():
+    parser = argparse.ArgumentParser(description='Extract and transform toll information from JSON files.')
+    parser.add_argument('json_folder',help='Path to the JSON files folder',type=str)
+    parser.add_argument('output_dir',help='Folder where the final transformed_data.csv will be stored',type=str)
+    args = parser.parse_args()
+    
+    extract_transform_data(args.json_folder, args.output_dir)
+    
+if __name__ == "__main__":
+    main()
+
 
 ### Script Usage:
 
