@@ -1,0 +1,101 @@
+#Process 1: Extracting trips from GPS Data
+import pandas as pd
+from datetime import datetime, timedelta
+import os
+import pyarrow.parquet as pq
+import argparse
+
+def extract_trips(input_file, output_dir):
+    df = pq.read_table(input_file).to_pandas()
+    
+    for unit, unit_data in df.groupby('unit'):
+        unit_data['timestamp'] = pd.to_datetime(unit_data['timestamp'])
+        unit_data = unit_data.sort_values('timestamp')
+        
+        trip_number = 0
+        prev_time = None
+        trip_data = pd.DataFrame()
+        
+        for index, row in unit_data.iterrows():
+            if prev_time is not None and (row['timestamp'] - prev_time) > timedelta(hours=7):
+                trip_data.to_csv(os.path.join(output_dir, f"{unit}_{trip_number}.csv"), index=False)
+                trip_number += 1
+                trip_data = pd.DataFrame()
+            
+            trip_data = trip_data.append(row)
+            prev_time = row['timestamp']
+        
+        if not trip_data.empty:
+            trip_data.to_csv(os.path.join(output_dir, f"{unit}_{trip_number}.csv"), index=False)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Extract trips from GPS Data')
+    parser.add_argument('--to_process', type=str, help='Path to the Parquet file to be processed')
+    parser.add_argument('--output_dir', type=str, help='Folder to store resulting CSV files')
+    args = parser.parse_args()
+    
+    extract_trips(args.to_process, args.output_dir)
+
+
+#Process 2: Uploading GPS tracks to TollGuru API
+import requests
+import os
+import argparse
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def upload_to_tollguru(input_dir, output_dir):
+    api_key = os.getenv("TOLLGURU_API_KEY")
+    api_url = os.getenv("TOLLGURU_API_URL") + '/gps-tracks-csv-upload?mapProvider=osrm&vehicleType=5AxlesTruck'
+    
+    for file_name in os.listdir(input_dir):
+        file_path = os.path.join(input_dir, file_name)
+        
+        headers = {'x-api-key': api_key, 'Content-Type': 'text/csv'}
+        
+        with open(file_path, 'rb') as file:
+            response = requests.post(api_url, data=file, headers=headers)
+            with open(os.path.join(output_dir, file_name.replace('.csv', '.json')), 'w') as json_file:
+                json_file.write(response.text)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Upload GPS tracks to TollGuru API')
+    parser.add_argument('--to_process', type=str, help='Path to the CSV folder')
+    parser.add_argument('--output_dir', type=str, help='Folder to store resulting JSON files')
+    args = parser.parse_args()
+    
+    upload_to_tollguru(args.to_process, args.output_dir)
+
+
+#Process 3: Extracting Toll Information from JSON Files
+import json
+import os
+import csv
+import argparse
+
+def process_json(input_dir, output_dir):
+    csv_file = os.path.join(output_dir, 'transformed_data.csv')
+    
+    with open(csv_file, 'w', newline='') as csvfile:
+        fieldnames = ['unit', 'trip_id', 'toll_loc_id_start', 'toll_loc_id_end', 'toll_loc_name_start',
+                      'toll_loc_name_end', 'toll_system_type', 'entry_time', 'exit_time', 'tag_cost',
+                      'cash_cost', 'license_plate_cost']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for file_name in os.listdir(input_dir):
+            file_path = os.path.join(input_dir, file_name)
+            
+            with open(file_path, 'r') as json_file:
+                data = json.load(json_file)
+                
+                # Process data and write to CSV
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Extract toll information from JSON files')
+    parser.add_argument('--to_process', type=str, help='Path to the JSON responses folder')
+    parser.add_argument('--output_dir', type=str, help='Folder to store final CSV')
+    args = parser.parse_args()
+    
+    process_json(args.to_process, args.output_dir)
